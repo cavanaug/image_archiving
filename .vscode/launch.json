@@ -1,0 +1,38 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: pyphoto.py",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: pyphoto.py exif IMG_7695.JPG",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "args": [
+                "exif",
+                "IMG_7695.JPG"
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: pyphoto.py rename -d IMG_7695.JPG",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "args": [
+                "rename",
+                "-n",
+                "IMG_7695.JPG"
+            ],
+            "console": "integratedTerminal"
+        }
+    ]
+}
