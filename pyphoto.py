@@ -356,9 +356,6 @@ def cmd_photo_rename(args):
 
 
 
-#   mv i prefix/dirname/filename
-
-
 def cmd_photo_unload(args):
     print(args)
 
@@ -415,6 +412,13 @@ if __name__ == "__main__":
     # create the parser for the "rename" command
     parser_rename = subparsers.add_parser("rename")
     parser_rename.add_argument(
+        "-f",
+        "--force",
+        help="force overwrite",
+        dest="force",
+        action="store_true",
+    )
+    parser_rename.add_argument(
         "-v",
         "--verbose",
         help="output verbose information",
@@ -435,18 +439,8 @@ if __name__ == "__main__":
         dest="target_prefix",
         default=".",
     )
-    parser_rename.add_argument(
-        "-d",
-        "--directory-format",
-        help="format of target directory layout (default is none)",
-        dest="directory_format",
-    )
-    parser_rename.add_argument(
-        "-f",
-        "--filename-format",
-        help="format of target filename (default is CUSTOM)",
-        dest="filename_format",
-    )
+#    parser_rename.add_argument( "-d", "--directory-format", help="format of target directory layout (default is none)", dest="directory_format",)
+#    parser_rename.add_argument( "-f", "--filename-format", help="format of target filename (default is CUSTOM)", dest="filename_format",)
     parser_rename.add_argument(
         "files", help="files to process", nargs="*", action="append"
     )
@@ -461,6 +455,20 @@ if __name__ == "__main__":
         dest="dryrun",
         action="store_true",
     )  # --dry-run
+    parser_unload.add_argument(
+        "-f",
+        "--force",
+        help="force overwrite",
+        dest="force",
+        action="store_true",
+    )
+    parser_unload.add_argument(
+        "-v",
+        "--verbose",
+        help="output verbose information",
+        dest="verbose",
+        action="store_true",
+    )
     parser_unload.set_defaults(func=cmd_photo_unload)
 
     # parse the args and call whatever function was selected
