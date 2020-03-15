@@ -314,9 +314,7 @@ def cmd_photo_rename(args):
         except SystemExit:
             exit(1)
         except:
-            e = sys.exc_info()[0]
-            print("SKIPPING: {} due to errors".format(filename), file=sys.stderr)
-            print("Exception {}".format(e), file=sys.stderr)
+            print("SKIPPING: {} due to errors ({}: {})".format(filename, sys.exc_info()[0], sys.exc_info()[1]), file=sys.stderr)
             if debug:
                 print("Details {}".format(traceback.format_exc()), file=sys.stderr)
             continue
@@ -333,25 +331,27 @@ def cmd_photo_rename(args):
             print("   Filepath:   {0}".format(newpath))
             print("    Dirname:   {0}".format(newdir))
             print("   Filename:   {0}".format(newname))
-        else:
-            print("{0} -> {1}".format(data["Custom Filepath"], newpath))
 
-        if not args.dryrun:
-            # if target already exists, check if same size, error unless force 
-            if os.path.isfile(newpath):
-                target_size=os.path.getsize(newpath)
-                src_size=os.path.getsize(filename)
-                if not args.force:
-                    if target_size == src_size:
-                        raise IOError("Destination exists, with same size")
-                    else:
-                        raise IOError("Destination exists, with DIFFERENT size.  Would destroy destination.")
-            else:
+        try:
+            if not args.dryrun:
+                # if target already exists, check if same size, error unless force 
+                if os.path.isfile(newpath):
+                    target_size=os.path.getsize(newpath)
+                    src_size=os.path.getsize(filename)
+                    if not args.force:
+                        if target_size == src_size:
+                            raise IOError("Destination exists, with same size")
+                        else:
+                            raise IOError("Destination exists, with DIFFERENT size.  Would destroy destination.")
                 if not os.path.isdir(newdir):
                     os.makedirs(newdir)
                 shutil.move(filename, newpath)
-
-
+                print("{0} -> {1}".format(data["Custom Filepath"], newpath))
+        except:
+            print("SKIPPING: {} due to errors ({}: {})".format(filename, sys.exc_info()[0], sys.exc_info()[1]), file=sys.stderr)
+            if debug:
+                print("Details {}".format(traceback.format_exc()), file=sys.stderr)
+            continue
 
 
 
