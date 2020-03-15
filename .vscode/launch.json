@@ -12,25 +12,87 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Python: pyphoto.py exif IMG_7695.JPG",
+            "name": "Python: pyphoto.py exif test/IMG_7695.JPG",
             "type": "python",
             "request": "launch",
             "program": "${file}",
             "args": [
                 "exif",
-                "IMG_7695.JPG"
+                "test/IMG_7695.JPG"
             ],
             "console": "integratedTerminal"
         },
         {
-            "name": "Python: pyphoto.py rename -d IMG_7695.JPG",
+            "name": "Python: pyphoto.py exif test/ios/2017-03-09_22-06-34.JPG",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "args": [
+                "exif",
+                "test/ios/2017-03-09_22-06-34.JPG"
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: pyphoto.py exif test/Recents/2020-03-04_09-59-00.JPG",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "args": [
+                "exif",
+                "test/Recents/2020-03-04_09-59-00.JPG"
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: pyphoto.py rename -n test/IMG_7695.JPG",
             "type": "python",
             "request": "launch",
             "program": "${file}",
             "args": [
                 "rename",
-                "-n",
-                "IMG_7695.JPG"
+                "--dry-run",
+                "--verbose",
+                "test/IMG_7695.JPG"
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: pyphoto.py rename -n test/ios/2017-03-09_22-06-34.JPG",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "args": [
+                "rename",
+                "--dry-run",
+                "--verbose",
+                "test/ios/2017-03-09_22-06-34.JPG"
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: pyphoto.py rename -n test/Recents/2020-03-04_09-59-00.JPG",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "args": [
+                "rename",
+                "--dry-run",
+                "--verbose",
+                "test/Recents/2020-03-04_09-59-00.JPG"
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: pyphoto.py rename -n test/Recents/2020-03-11_13-07-10.JPG",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "args": [
+                "rename",
+                "--dry-run",
+                "--verbose",
+                "test/Recents/2020-03-11_13-07-10.JPG"
             ],
             "console": "integratedTerminal"
         }

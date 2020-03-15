@@ -7,9 +7,11 @@ import os.path
 import time
 import re
 import exifread
+import shutil
+import traceback
 
-# import exifread
-# import exifread.tags
+debug=False
+#debug=True
 
 counter = 0
 
@@ -25,6 +27,8 @@ modelAlias = {
     "iPhone 5S": "IOS",
     "iPhone 6": "IOS",
     "iPhone 6S": "IOS",
+    "iPhone 6s": "IOS",
+    "iPhone SE": "IOS",
     #
     #  Modern Cameras
     #
@@ -103,7 +107,8 @@ def new_filename(data):
     oldname = data["Custom Filename"].printable
     m = re.search("^(.*)\.(jpg|thm|avi)$", oldname, re.IGNORECASE)
     if not m:
-        print("ERROR: Unhandled filetype for {0}...\n".format(oldname), file=sys.stderr)
+        print("ERROR: Unhandled filetype for {0}...".format(oldname), file=sys.stderr)
+        raise UserWarning
         return oldname
     suffix = m.group(2)
     base = m.group(1)
@@ -118,6 +123,10 @@ def new_filename(data):
         else:
             base = ""
 
+    # Strip out the base handling if the file is named in IOS dateformat already
+    if re.search("^\d\d\d\d-\d\d-\d\d_\d\d-\d\d-\d\d", base):
+        base = ""
+
     # Add back in the base _ prefix
     if len(base) > 0:
         base = "_" + base
@@ -130,6 +139,8 @@ def new_filename(data):
             newfilename = data["EXIF DateTimeDigitized"].printable
         elif "Image DateTime" in data:
             newfilename = data["Image DateTime"].printable
+        elif "Custom DateTimeOriginal" in data:
+            newfilename = data["Custom DateTimeOriginal"].printable
         else:
             raise KeyError
     except:
@@ -145,22 +156,26 @@ def new_filename(data):
     newfilename = re.sub(r" ", "-", newfilename)
 
     # TODO:  If DateTimeOriginal isnt there use Stat-mtime
-    # TODO:  If SubSecTime isnt there use 2 digits from Canon-ImageNumber
+    # TODO:  If SubSecTime isnt there use 2 digits from Canon-ImageNumber, MakerNote ImageNumber
     # TODO:  Add in test for borked dates.   Dont want to attempt renames if the data is messed up.
-
     try:
-        modelShort = modelAlias[data["Image Model"].printable.rstrip()]
+        if "Image Model" in data:
+            modelShort = modelAlias[data["Image Model"].printable.rstrip()]
+        else:
+            modelShort = "UNK"
+            # This is a hack for screenshots on IOS
+            if "Custom DateTimeOriginal" in data:
+                modelShort = "IOS"
     except:
         print('ERROR: File "{0}"\n'.format(data["Custom Filepath"]), file=sys.stderr)
         print(
             'ERROR: Missing ModelAlias for "{0}"\n'.format(data["Image Model"]),
             file=sys.stderr,
         )
-        sys.exit(1)
         raise (ValueError)
-        return oldname
 
     # Handle situations with FPS>1
+    # Will put in a 2 digit psuedo seq number
     if modelShort == "7D":
         newfilename = newfilename + data["EXIF SubSecTime"].printable
     elif modelShort == "10D":
@@ -200,6 +215,8 @@ def new_dirname(data):
         datetime = data["EXIF DateTimeDigitized"].printable
     elif "Image DateTime" in data:
         datetime = data["Image DateTime"].printable
+    elif "Custom DateTimeOriginal" in data:
+        datetime = data["Custom DateTimeOriginal"].printable
     else:
         raise ValueError
 
@@ -244,6 +261,7 @@ def process_file(fpath):
     data = exifread.process_file(file, details=True)
     # print("Data = {}".format(data))
 
+    # Populate the exif information with our own custom data
     statinfo = os.stat(fpath)
     data["Custom Filepath"] = exifread.IfdTag(fpath, None, 2L, None, None, None)
     data["Custom Filename"] = exifread.IfdTag(
@@ -274,6 +292,12 @@ def process_file(fpath):
         None,
         None,
     )
+    # Strip out the base handling if the file has already been renamed
+    base=fpath_basename.split(".")[0]
+    if re.search("^\d\d\d\d-\d\d-\d\d_\d\d-\d\d-\d\d", base):
+        base = re.sub("_", " ", base)
+        base = re.sub("-", ":", base)
+    data["Custom DateTimeOriginal"] = exifread.IfdTag(base, None, 2L, None, None, None)
     return data
 
 
@@ -293,7 +317,8 @@ def cmd_photo_rename(args):
             e = sys.exc_info()[0]
             print("SKIPPING: {} due to errors".format(filename), file=sys.stderr)
             print("Exception {}".format(e), file=sys.stderr)
-            #            print("Data {}".format(data), file=sys.stderr)
+            if debug:
+                print("Details {}".format(traceback.format_exc()), file=sys.stderr)
             continue
         newpath = "{target_prefix}/{target_dir}/{target_name}".format(
             target_prefix=args.target_prefix, target_dir=newdir, target_name=newname
@@ -309,12 +334,28 @@ def cmd_photo_rename(args):
             print("    Dirname:   {0}".format(newdir))
             print("   Filename:   {0}".format(newname))
         else:
-            print("{0} -> {1}\n".format(data["Custom Filepath"], newpath))
+            print("{0} -> {1}".format(data["Custom Filepath"], newpath))
+
+        if not args.dryrun:
+            # if target already exists, check if same size, error unless force 
+            if os.path.isfile(newpath):
+                target_size=os.path.getsize(newpath)
+                src_size=os.path.getsize(filename)
+                if not args.force:
+                    if target_size == src_size:
+                        raise IOError("Destination exists, with same size")
+                    else:
+                        raise IOError("Destination exists, with DIFFERENT size.  Would destroy destination.")
+            else:
+                if not os.path.isdir(newdir):
+                    os.makedirs(newdir)
+                shutil.move(filename, newpath)
 
 
-# for i in files
-#   validate file existance
-#   get formatted dirname & filename
+
+
+
+
 #   mv i prefix/dirname/filename
 
 
