@@ -10,8 +10,7 @@ import exifread
 import shutil
 import traceback
 
-debug=False
-#debug=True
+debug = False
 
 counter = 0
 
@@ -145,10 +144,7 @@ def new_filename(data):
             raise KeyError
     except:
         print(
-            "ERROR: Missing EXIF DateTimeOriginal for {0}\n".format(
-                data["Custom Filepath"]
-            ),
-            file=sys.stderr,
+            "ERROR: Missing EXIF DateTimeOriginal for {0}\n".format(data["Custom Filepath"]), file=sys.stderr,
         )
         raise (ValueError)
         return oldname
@@ -169,8 +165,7 @@ def new_filename(data):
     except:
         print('ERROR: File "{0}"\n'.format(data["Custom Filepath"]), file=sys.stderr)
         print(
-            'ERROR: Missing ModelAlias for "{0}"\n'.format(data["Image Model"]),
-            file=sys.stderr,
+            'ERROR: Missing ModelAlias for "{0}"\n'.format(data["Image Model"]), file=sys.stderr,
         )
         raise (ValueError)
 
@@ -264,40 +259,23 @@ def process_file(fpath):
     # Populate the exif information with our own custom data
     statinfo = os.stat(fpath)
     data["Custom Filepath"] = exifread.IfdTag(fpath, None, 2L, None, None, None)
-    data["Custom Filename"] = exifread.IfdTag(
-        fpath_basename, None, 2L, None, None, None
-    )
+    data["Custom Filename"] = exifread.IfdTag(fpath_basename, None, 2L, None, None, None)
     data["Custom Dirname"] = exifread.IfdTag(fpath_dirname, None, 2L, None, None, None)
     data["Custom stat-atime"] = exifread.IfdTag(
-        time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_atime)),
-        None,
-        2L,
-        None,
-        None,
-        None,
+        time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_atime)), None, 2L, None, None, None,
     )
     data["Custom stat-ctime"] = exifread.IfdTag(
-        time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_ctime)),
-        None,
-        2L,
-        None,
-        None,
-        None,
+        time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_ctime)), None, 2L, None, None, None,
     )
     data["Custom stat-mtime"] = exifread.IfdTag(
-        time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_mtime)),
-        None,
-        2L,
-        None,
-        None,
-        None,
+        time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_mtime)), None, 2L, None, None, None,
     )
     # Strip out the base handling if the file has already been renamed
-    base=fpath_basename.split(".")[0]
+    base = fpath_basename.split(".")[0]
     if re.search("^\d\d\d\d-\d\d-\d\d_\d\d-\d\d-\d\d", base):
         base = re.sub("_", " ", base)
         base = re.sub("-", ":", base)
-    data["Custom DateTimeOriginal"] = exifread.IfdTag(base, None, 2L, None, None, None)
+        data["Custom DateTimeOriginal"] = exifread.IfdTag(base, None, 2L, None, None, None)
     return data
 
 
@@ -314,7 +292,10 @@ def cmd_photo_rename(args):
         except SystemExit:
             exit(1)
         except:
-            print("SKIPPING: {} due to errors ({}: {})".format(filename, sys.exc_info()[0], sys.exc_info()[1]), file=sys.stderr)
+            print(
+                "SKIPPING: {} due to errors ({}: {})".format(filename, sys.exc_info()[0], sys.exc_info()[1]),
+                file=sys.stderr,
+            )
             if debug:
                 print("Details {}".format(traceback.format_exc()), file=sys.stderr)
             continue
@@ -333,27 +314,28 @@ def cmd_photo_rename(args):
             print("   Filename:   {0}".format(newname))
 
         try:
+            # if target already exists, check if same size, error unless force
+            if os.path.isfile(newpath):
+                target_size = os.path.getsize(newpath)
+                src_size = os.path.getsize(filename)
+                if not args.force:
+                    if target_size == src_size:
+                        raise IOError("Destination exists, with same size")
+                    else:
+                        raise IOError("Destination exists, with DIFFERENT size.  Would destroy destination.")
             if not args.dryrun:
-                # if target already exists, check if same size, error unless force 
-                if os.path.isfile(newpath):
-                    target_size=os.path.getsize(newpath)
-                    src_size=os.path.getsize(filename)
-                    if not args.force:
-                        if target_size == src_size:
-                            raise IOError("Destination exists, with same size")
-                        else:
-                            raise IOError("Destination exists, with DIFFERENT size.  Would destroy destination.")
                 if not os.path.isdir(newdir):
                     os.makedirs(newdir)
                 shutil.move(filename, newpath)
-                print("{0} -> {1}".format(data["Custom Filepath"], newpath))
+            print("{0} -> {1}".format(data["Custom Filepath"], newpath))
         except:
-            print("SKIPPING: {} due to errors ({}: {})".format(filename, sys.exc_info()[0], sys.exc_info()[1]), file=sys.stderr)
+            print(
+                "SKIPPING: {} due to errors ({}: {})".format(filename, sys.exc_info()[0], sys.exc_info()[1]),
+                file=sys.stderr,
+            )
             if debug:
                 print("Details {}".format(traceback.format_exc()), file=sys.stderr)
             continue
-
-
 
 
 def cmd_photo_unload(args):
@@ -379,14 +361,7 @@ def cmd_photo_exif(args):
             if i in ("JPEGThumbnail", "TIFFThumbnail"):
                 continue
             try:
-                print(
-                    "   [%s] (%s): %s"
-                    % (
-                        i,
-                        exifread.FIELD_TYPES[data[i].field_type][2],
-                        data[i].printable,
-                    )
-                )
+                print("   [%s] (%s): %s" % (i, exifread.FIELD_TYPES[data[i].field_type][2], data[i].printable,))
             except:
                 print("error", i, '"', data[i], '"')
         print()
@@ -397,40 +372,27 @@ if __name__ == "__main__":
     # create the top-level parser
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", action="version", version="1.0")
+    parser.add_argument(
+        "-d", "--debug", help="additional debug information", dest="debug", default=False, action="store_true"
+    )
     subparsers = parser.add_subparsers()
 
     # create the parser for the "exif" command
     parser_exif = subparsers.add_parser("exif")
-    parser_exif.add_argument(
-        "files", help="files to process", nargs="*", action="append"
-    )
-    parser_exif.add_argument(
-        "-T", "--tagname", help="only show tagname", dest="tagname", action="append"
-    )
+    parser_exif.add_argument("files", help="files to process", nargs="*", action="append")
+    parser_exif.add_argument("-T", "--tagname", help="only show tagname", dest="tagname", action="append")
     parser_exif.set_defaults(func=cmd_photo_exif)
 
     # create the parser for the "rename" command
     parser_rename = subparsers.add_parser("rename")
     parser_rename.add_argument(
-        "-f",
-        "--force",
-        help="force overwrite",
-        dest="force",
-        action="store_true",
+        "-f", "--force", help="force overwrite", dest="force", action="store_true",
     )
     parser_rename.add_argument(
-        "-v",
-        "--verbose",
-        help="output verbose information",
-        dest="verbose",
-        action="store_true",
+        "-v", "--verbose", help="output verbose information", dest="verbose", action="store_true",
     )
     parser_rename.add_argument(
-        "-n",
-        "--dry-run",
-        help="perform a trial run with no changes made",
-        dest="dryrun",
-        action="store_true",
+        "-n", "--dry-run", help="perform a trial run with no changes made", dest="dryrun", action="store_true",
     )
     parser_rename.add_argument(
         "-t",
@@ -439,38 +401,26 @@ if __name__ == "__main__":
         dest="target_prefix",
         default=".",
     )
-#    parser_rename.add_argument( "-d", "--directory-format", help="format of target directory layout (default is none)", dest="directory_format",)
-#    parser_rename.add_argument( "-f", "--filename-format", help="format of target filename (default is CUSTOM)", dest="filename_format",)
-    parser_rename.add_argument(
-        "files", help="files to process", nargs="*", action="append"
-    )
+    #    parser_rename.add_argument( "-d", "--directory-format", help="format of target directory layout (default is none)", dest="directory_format",)
+    #    parser_rename.add_argument( "-f", "--filename-format", help="format of target filename (default is CUSTOM)", dest="filename_format",)
+    parser_rename.add_argument("files", help="files to process", nargs="*", action="append")
     parser_rename.set_defaults(func=cmd_photo_rename)
 
     # create the parser for the "unload" command
     parser_unload = subparsers.add_parser("unload")
     parser_unload.add_argument(
-        "-n",
-        "--dry-run",
-        help="perform a trial run with no changes made",
-        dest="dryrun",
-        action="store_true",
+        "-n", "--dry-run", help="perform a trial run with no changes made", dest="dryrun", action="store_true",
     )  # --dry-run
     parser_unload.add_argument(
-        "-f",
-        "--force",
-        help="force overwrite",
-        dest="force",
-        action="store_true",
+        "-f", "--force", help="force overwrite", dest="force", action="store_true",
     )
     parser_unload.add_argument(
-        "-v",
-        "--verbose",
-        help="output verbose information",
-        dest="verbose",
-        action="store_true",
+        "-v", "--verbose", help="output verbose information", dest="verbose", action="store_true",
     )
     parser_unload.set_defaults(func=cmd_photo_unload)
 
     # parse the args and call whatever function was selected
     args = parser.parse_args()
+    if not debug:
+        debug = args.debug
     args.func(args)

@@ -12,13 +12,13 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Python: pyphoto.py exif test/IMG_7695.JPG",
+            "name": "Python: pyphoto.py exif WIP_TEST.JPG",
             "type": "python",
             "request": "launch",
             "program": "${file}",
             "args": [
                 "exif",
-                "test/IMG_7695.JPG"
+                "WIP_TEST.JPG"
             ],
             "console": "integratedTerminal"
         },
@@ -45,7 +45,7 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Python: pyphoto.py rename -n test/IMG_7695.JPG",
+            "name": "Python: pyphoto.py rename -n WIP_TEST.JPG",
             "type": "python",
             "request": "launch",
             "program": "${file}",
@@ -53,7 +53,7 @@
                 "rename",
                 "--dry-run",
                 "--verbose",
-                "test/IMG_7695.JPG"
+                "WIP_TEST.JPG"
             ],
             "console": "integratedTerminal"
         },
