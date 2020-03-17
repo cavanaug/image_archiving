@@ -12,6 +12,8 @@ import shutil
 import traceback
 import logging
 
+from pathlib import Path
+
 from autologging import logged, TRACE, traced
 
 
@@ -298,7 +300,7 @@ def process_file(fpath):
 def cmd_photo_rename(args):
     for filename in args.files[0]:
         if not os.path.isfile(filename):
-            print("'%s' doesn't exist...\n" % filename, file=sys.stderr)
+            print("SKIPPING: {} is not a file".format(filename, file=sys.stderr))
             continue
         try:
             data = process_file(filename)
@@ -357,7 +359,19 @@ def cmd_photo_rename(args):
 @traced
 @logged
 def cmd_photo_unload(args):
-    print(args)
+    files=[]
+    for dir in args.dirs[0]:
+        if not os.path.isdir(dir):
+            print("SKIPPING: {} is not a directory".format(dir, file=sys.stderr))
+            continue
+        for path in Path(dir).rglob('*.JPG'):
+            files.append(path)
+#    for file in files:
+#        print(file)
+    args.files=[]
+    args.files.append(files)
+    cmd_photo_rename(args)
+    return
 
 
 @traced
@@ -435,6 +449,14 @@ if __name__ == "__main__":
     parser_unload.add_argument(
         "-v", "--verbose", help="output verbose information", dest="verbose", action="store_true",
     )
+    parser_unload.add_argument(
+        "-t",
+        "--target-prefix",
+        help="location where the files will be moved to on rename (default is .)",
+        dest="target_prefix",
+        default=".",
+    )
+    parser_unload.add_argument("dirs", help="directories to unload recursively", nargs="*", action="append")
     parser_unload.set_defaults(func=cmd_photo_unload)
 
     # parse the args and call whatever function was selected

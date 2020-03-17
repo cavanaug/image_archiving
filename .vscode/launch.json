@@ -23,24 +23,24 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Python: pyphoto.py exif test/ios/2017-03-09_22-06-34.JPG",
+            "name": "Python: pyphoto.py exif test/ios/*.JPG",
             "type": "python",
             "request": "launch",
             "program": "${file}",
             "args": [
                 "exif",
-                "test/ios/2017-03-09_22-06-34.JPG"
+                "test/ios/*.JPG"
             ],
             "console": "integratedTerminal"
         },
         {
-            "name": "Python: pyphoto.py exif test/Recents/2020-03-04_09-59-00.JPG",
+            "name": "Python: pyphoto.py exif test/Recents/*.JPG",
             "type": "python",
             "request": "launch",
             "program": "${file}",
             "args": [
                 "exif",
-                "test/Recents/2020-03-04_09-59-00.JPG"
+                "test/Recents/*.JPG"
             ],
             "console": "integratedTerminal"
         },
@@ -58,7 +58,7 @@
             "console": "integratedTerminal"
         },
         {
-            "name": "Python: pyphoto.py rename -n test/ios/2017-03-09_22-06-34.JPG",
+            "name": "Python: pyphoto.py rename -n test/ios/*.JPG",
             "type": "python",
             "request": "launch",
             "program": "${file}",
@@ -66,12 +66,12 @@
                 "rename",
                 "--dry-run",
                 "--verbose",
-                "test/ios/2017-03-09_22-06-34.JPG"
+                "test/ios/*.JPG"
             ],
             "console": "integratedTerminal"
         },
         {
-            "name": "Python: pyphoto.py rename -n test/Recents/2020-03-04_09-59-00.JPG",
+            "name": "Python: pyphoto.py rename -n test/Recents/*.JPG",
             "type": "python",
             "request": "launch",
             "program": "${file}",
@@ -79,20 +79,33 @@
                 "rename",
                 "--dry-run",
                 "--verbose",
-                "test/Recents/2020-03-04_09-59-00.JPG"
+                "test/Recents/*.JPG"
             ],
             "console": "integratedTerminal"
         },
         {
-            "name": "Python: pyphoto.py rename -n test/Recents/2020-03-11_13-07-10.JPG",
+            "name": "Python: pyphoto.py unload -n test/ios",
             "type": "python",
             "request": "launch",
             "program": "${file}",
             "args": [
-                "rename",
+                "unload",
                 "--dry-run",
                 "--verbose",
-                "test/Recents/2020-03-11_13-07-10.JPG"
+                "test/ios"
+            ],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Python: pyphoto.py unload -n test/Recents",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "args": [
+                "unload",
+                "--dry-run",
+                "--verbose",
+                "test/Recents"
             ],
             "console": "integratedTerminal"
         }
