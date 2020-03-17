@@ -1,5 +1,5 @@
-#!/usr/bin/env python2
-from __future__ import print_function
+#!/usr/bin/env python3
+#from __future__ import print_function
 import argparse
 import sys
 import os
@@ -8,7 +8,12 @@ import time
 import re
 import exifread
 import shutil
+
 import traceback
+import logging
+
+from autologging import logged, TRACE, traced
+
 
 debug = False
 
@@ -100,6 +105,8 @@ modelAlias = {
 #    X = ImageSeq Number (Basically a way to allow numbering of images when you can take > 1 fps)
 #              TODO: This is Very Suboptimal in design as it is only 1 digit, you CAN AND WILL have instances where 0 was after 9, should make this 2 digits
 #    YYY = Model Name, like A70 or G3 or 10D so I know which camera took the photo
+@traced
+@logged
 def new_filename(data):
     global counter
     counter = counter + 1
@@ -201,6 +208,8 @@ def new_filename(data):
 #
 # Pass it the full path to the source image and it will return the folder hierarchy to be placed in
 #
+@traced
+@logged
 def new_dirname(data):
     # Build the date & subsec portion of the filename
 
@@ -219,10 +228,12 @@ def new_dirname(data):
     newdirname = m.group(1) + os.sep + m.group(1) + "-" + m.group(2) + "_Unprocessed"
     # TODO:  If DateTimeOriginal isnt there use Stat-mtime
     # TODO:  Add in test for borked dates.   Dont want to attempt renames if the data is messed up.
-    #    data['Custom Filepath'] = exifread.IfdTag(fpath, None, 2L, None, None, None)
+    #    data['Custom Filepath'] = exifread.IfdTag(fpath, None, 2, None, None, None)
     return newdirname
 
 
+@traced
+@logged
 def merge_dicts(*dict_args):
     """
     Given any number of dicts, shallow copy and merge into a new dict,
@@ -241,6 +252,8 @@ def merge_dicts(*dict_args):
 #     filename
 #     custom fields (derived from comments)
 #
+@traced
+@logged
 def process_file(fpath):
     try:
         file = open(fpath, "rb")
@@ -258,28 +271,30 @@ def process_file(fpath):
 
     # Populate the exif information with our own custom data
     statinfo = os.stat(fpath)
-    data["Custom Filepath"] = exifread.IfdTag(fpath, None, 2L, None, None, None)
-    data["Custom Filename"] = exifread.IfdTag(fpath_basename, None, 2L, None, None, None)
-    data["Custom Dirname"] = exifread.IfdTag(fpath_dirname, None, 2L, None, None, None)
+    data["Custom Filepath"] = exifread.IfdTag(fpath, None, 2, None, None, None)
+    data["Custom Filename"] = exifread.IfdTag(fpath_basename, None, 2, None, None, None)
+    data["Custom Dirname"] = exifread.IfdTag(fpath_dirname, None, 2, None, None, None)
     data["Custom stat-atime"] = exifread.IfdTag(
-        time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_atime)), None, 2L, None, None, None,
+        time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_atime)), None, 2, None, None, None,
     )
     data["Custom stat-ctime"] = exifread.IfdTag(
-        time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_ctime)), None, 2L, None, None, None,
+        time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_ctime)), None, 2, None, None, None,
     )
     data["Custom stat-mtime"] = exifread.IfdTag(
-        time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_mtime)), None, 2L, None, None, None,
+        time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_mtime)), None, 2, None, None, None,
     )
     # Strip out the base handling if the file has already been renamed
     base = fpath_basename.split(".")[0]
     if re.search("^\d\d\d\d-\d\d-\d\d_\d\d-\d\d-\d\d", base):
         base = re.sub("_", " ", base)
         base = re.sub("-", ":", base)
-        data["Custom DateTimeOriginal"] = exifread.IfdTag(base, None, 2L, None, None, None)
+        data["Custom DateTimeOriginal"] = exifread.IfdTag(base, None, 2, None, None, None)
     return data
 
 
 # sub-command functions
+@traced
+@logged
 def cmd_photo_rename(args):
     for filename in args.files[0]:
         if not os.path.isfile(filename):
@@ -290,6 +305,7 @@ def cmd_photo_rename(args):
             newname = new_filename(data)
             newdir = new_dirname(data)
         except SystemExit:
+            print("Exiting!", file=sys.stderr)
             exit(1)
         except:
             print(
@@ -338,10 +354,14 @@ def cmd_photo_rename(args):
             continue
 
 
+@traced
+@logged
 def cmd_photo_unload(args):
     print(args)
 
 
+@traced
+@logged
 def cmd_photo_exif(args):
     err = 0
     for filename in args.files[0]:
@@ -373,7 +393,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", action="version", version="1.0")
     parser.add_argument(
-        "-d", "--debug", help="additional debug information", dest="debug", default=False, action="store_true"
+        "-d", "--debug", help="additional debug information", dest="debug", default=0, action="count"
     )
     subparsers = parser.add_subparsers()
 
@@ -397,12 +417,10 @@ if __name__ == "__main__":
     parser_rename.add_argument(
         "-t",
         "--target-prefix",
-        help="location where the files will be moved to on rename (default is src)",
+        help="location where the files will be moved to on rename (default is .)",
         dest="target_prefix",
         default=".",
     )
-    #    parser_rename.add_argument( "-d", "--directory-format", help="format of target directory layout (default is none)", dest="directory_format",)
-    #    parser_rename.add_argument( "-f", "--filename-format", help="format of target filename (default is CUSTOM)", dest="filename_format",)
     parser_rename.add_argument("files", help="files to process", nargs="*", action="append")
     parser_rename.set_defaults(func=cmd_photo_rename)
 
@@ -422,5 +440,12 @@ if __name__ == "__main__":
     # parse the args and call whatever function was selected
     args = parser.parse_args()
     if not debug:
-        debug = args.debug
-    args.func(args)
+        debug = args.debug>=1
+
+    if args.debug>=2:
+        logging.basicConfig(level=TRACE, stream=sys.stderr, format="%(levelname)s:%(filename)s,%(lineno)d:%(name)s.%(funcName)s:%(message)s")
+    try:
+        func = args.func
+    except AttributeError:
+        parser.error("too few arguments")
+    func(args)
