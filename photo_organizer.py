@@ -52,6 +52,7 @@ modelAlias = {
     "Canon PowerShot SD630": "PSHOT",
     "Canon PowerShot SD500": "PSHOT",
     "Canon PowerShot SD800 IS": "PSHOT",
+    "Canon PowerShot SD1100 IS": "PSHOT",
     "Canon PowerShot G3": "PSHOT",
     "Canon PowerShot G1 X": "PSHOT",
     "Canon PowerShot A70": "PSHOT",
@@ -116,7 +117,7 @@ def new_filename(data):
     m = re.search("^(.*)\.(jpg|thm|avi)$", oldname, re.IGNORECASE)
     if not m:
         print("ERROR: Unhandled filetype for {0}...".format(oldname), file=sys.stderr)
-        raise UserWarning
+        raise UserWarning("Unhandled filetype")
         return oldname
     suffix = m.group(2)
     base = m.group(1)
@@ -150,12 +151,12 @@ def new_filename(data):
         elif "Custom DateTimeOriginal" in data:
             newfilename = data["Custom DateTimeOriginal"].printable
         else:
-            raise KeyError
+            raise KeyError("Missing EXIF DataTimeOriginal")
     except:
         print(
-            "ERROR: Missing EXIF DateTimeOriginal for {0}\n".format(data["Custom Filepath"]), file=sys.stderr,
+            "ERROR: Missing EXIF DateTimeOriginal for {0}".format(data["Custom Filepath"]), file=sys.stderr,
         )
-        raise (ValueError)
+        raise KeyError("Missing EXIF DataTimeOriginal")
         return oldname
     newfilename = re.sub(r":", "", newfilename)
     newfilename = re.sub(r" ", "-", newfilename)
@@ -176,7 +177,7 @@ def new_filename(data):
         print(
             'ERROR: Missing ModelAlias for "{0}"\n'.format(data["Image Model"]), file=sys.stderr,
         )
-        raise (ValueError)
+        raise KeyError("Missing Model Alias")
 
     # Handle situations with FPS>1
     # Will put in a 2 digit psuedo seq number
@@ -224,7 +225,7 @@ def new_dirname(data):
     elif "Custom DateTimeOriginal" in data:
         datetime = data["Custom DateTimeOriginal"].printable
     else:
-        raise ValueError
+        raise KeyError("Missing EXIF DataTimeOriginal")
 
     m = re.search(r"^(\d\d\d\d):(\d\d)", datetime)
     newdirname = m.group(1) + os.sep + m.group(1) + "-" + m.group(2) + "_Unprocessed"
@@ -389,7 +390,7 @@ def cmd_photo_exif(args):
             print("   No EXIF information found")
             continue
 
-        x = data.keys()
+        x = list(data.keys())
         x.sort()
         for i in x:
             if i in ("JPEGThumbnail", "TIFFThumbnail"):
