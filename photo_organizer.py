@@ -8,7 +8,9 @@ import time
 import re
 import exifread
 import shutil
+import subprocess
 import glob
+import json
 
 import traceback
 import logging
@@ -145,8 +147,6 @@ def getModelAlias(model):
 #    X = ImageSeq Number (Basically a way to allow numbering of images when you can take > 1 fps)
 #              TODO: This is Very Suboptimal in design as it is only 1 digit, you CAN AND WILL have instances where 0 was after 9, should make this 2 digits
 #    YYY = Model Name, like A70 or G3 or 10D so I know which camera took the photo
-@traced
-@logged
 def new_filename(data):
     global counter
     counter = counter + 1
@@ -251,8 +251,6 @@ def new_filename(data):
 #
 # Pass it the full path to the source image and it will return the folder hierarchy to be placed in
 #
-@traced
-@logged
 def new_dirname(data):
     # Build the date & subsec portion of the filename
 
@@ -277,8 +275,6 @@ def new_dirname(data):
     return newdirname
 
 
-@traced
-@logged
 def merge_dicts(*dict_args):
     """
     Given any number of dicts, shallow copy and merge into a new dict,
@@ -297,8 +293,37 @@ def merge_dicts(*dict_args):
 #     filename
 #     custom fields (derived from comments)
 #
-@traced
-@logged
+def process_file_new(fpath):
+    try:
+        file = open(fpath, "rb")
+    except:
+        print("'%s' is unreadable\n" % fpath, file=sys.stderr)
+        exit(1)
+    # TODO: Fix avi/mov handling here
+    fpath_basename = os.path.basename(fpath)
+    fpath_dirname = os.path.dirname(fpath)
+    if not fpath_dirname:
+        fpath_dirname = "."
+    fpath = fpath_dirname + os.sep + fpath_basename
+#    data = exifread.process_file(file, details=True)
+    data = json.loads(subprocess.check_output(args=["exiftool", "-j", fpath]))[0]
+
+    # Populate the exif information with our own custom data
+#    statinfo = os.stat(fpath)
+#    data["Custom Filepath"] = exifread.IfdTag(fpath, None, 2, None, None, None)
+#    data["Custom Filename"] = exifread.IfdTag(fpath_basename, None, 2, None, None, None)
+#    data["Custom Dirname"] = exifread.IfdTag(fpath_dirname, None, 2, None, None, None)
+#    data["Custom stat-atime"] = exifread.IfdTag( time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_atime)), None, 2, None, None, None,)
+#    data["Custom stat-ctime"] = exifread.IfdTag( time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_ctime)), None, 2, None, None, None,)
+#    data["Custom stat-mtime"] = exifread.IfdTag( time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_mtime)), None, 2, None, None, None,)
+    # Strip out the base handling if the file has already been renamed
+    base = fpath_basename.split(".")[0]
+    if re.search("^\d\d\d\d-\d\d-\d\d_\d\d-\d\d-\d\d", base):
+        base = re.sub("_", " ", base)
+        base = re.sub("-", ":", base)
+        data["Custom DateTimeOriginal"] = base
+    return data
+
 def process_file(fpath):
     try:
         file = open(fpath, "rb")
@@ -336,10 +361,7 @@ def process_file(fpath):
         data["Custom DateTimeOriginal"] = exifread.IfdTag(base, None, 2, None, None, None)
     return data
 
-
 # sub-command functions
-@traced
-@logged
 def cmd_photo_rename(args):
     for filename in args.files[0]:
         if not os.path.isfile(filename):
@@ -405,8 +427,6 @@ def cmd_photo_rename(args):
             continue
 
 
-@traced
-@logged
 def cmd_photo_unload(args):
     files=[]
     for dir in args.dirs[0]:
@@ -425,9 +445,57 @@ def cmd_photo_unload(args):
     return
 
 
-@traced
-@logged
+def cmd_photo_exif_new(args):
+    err = 0
+    for filename in args.files[0]:
+        if not os.path.isfile(filename):
+            print("'%s' doesn't exist...\n" % filename)
+            err += 1
+            continue
+        print(filename + ":")
+        data = process_file_new(filename)
+        if not data:
+            print("   No EXIF information found")
+            continue
+
+        x = list(data.keys())
+        x.sort()
+        for i in x:
+            if i in ("JPEGThumbnail", "TIFFThumbnail"):
+                continue
+            try:
+                print("   [%s] (%s): %s" % (i, exifread.FIELD_TYPES[data[i].field_type][2], data[i].printable,))
+            except:
+                print("error", i, '"', data[i], '"')
+        print()
+    exit(err)
+
 def cmd_photo_exif(args):
+    err = 0
+    for filename in args.files[0]:
+        if not os.path.isfile(filename):
+            print("'%s' doesn't exist...\n" % filename)
+            err += 1
+            continue
+        print(filename + ":")
+        data = process_file_new(filename)
+        if not data:
+            print("   No EXIF information found")
+            continue
+
+        x = list(data.keys())
+        x.sort()
+        for i in x:
+            if i in ("JPEGThumbnail", "TIFFThumbnail"):
+                continue
+            try:
+                print("   [%s] (%s): %s" % (i, type(data[i]).__name__.upper(), data[i]))
+            except:
+                print("error", i, '"', data[i], '"')
+        print()
+    exit(err)
+
+def cmd_photo_exif2(args):
     err = 0
     for filename in args.files[0]:
         if not os.path.isfile(filename):
@@ -452,7 +520,6 @@ def cmd_photo_exif(args):
         print()
     exit(err)
 
-
 if __name__ == "__main__":
     # create the top-level parser
     parser = argparse.ArgumentParser()
@@ -463,10 +530,15 @@ if __name__ == "__main__":
     subparsers = parser.add_subparsers()
 
     # create the parser for the "exif" command
-    parser_exif = subparsers.add_parser("exif")
+    parser_exif = subparsers.add_parser("exif", help="show exif data using exiftool (default)")
     parser_exif.add_argument("files", help="files to process", nargs="*", action="append")
     parser_exif.add_argument("-T", "--tagname", help="only show tagname", dest="tagname", action="append")
     parser_exif.set_defaults(func=cmd_photo_exif)
+
+    parser_exif2 = subparsers.add_parser("exif2", help="show exif data using python exifread for comparison")
+    parser_exif2.add_argument("files", help="files to process", nargs="*", action="append")
+    parser_exif2.add_argument("-T", "--tagname", help="only show tagname", dest="tagname", action="append")
+    parser_exif2.set_defaults(func=cmd_photo_exif2)
 
     # create the parser for the "rename" command
     parser_rename = subparsers.add_parser("rename")
@@ -498,35 +570,65 @@ if __name__ == "__main__":
     parser_rename.add_argument("files", help="files to process", nargs="*", action="append")
     parser_rename.set_defaults(func=cmd_photo_rename)
 
-    # create the parser for the "unload" command
-    parser_unload = subparsers.add_parser("unload")
-    parser_unload.add_argument(
+    # create the parser for the "unload_photos" command
+    parser_unload_photos = subparsers.add_parser("unload_photos", help="recursively unload (find, copy/rename, delete) photos (jpg, jpeg)")
+    parser_unload_photos.add_argument(
         "-n", "--dry-run", help="perform a trial run with no changes made", dest="dryrun", action="store_true",
     )  # --dry-run
-    parser_unload.add_argument(
+    parser_unload_photos.add_argument(
         "-f", "--force", help="force overwrite", dest="force", action="store_true",
     )
-    parser_unload.add_argument(
+    parser_unload_photos.add_argument(
         "-U", "--use-unknown", help="use UNK as camera model", dest="use_unknown", action="store_true",
     )
-    parser_unload.add_argument(
+    parser_unload_photos.add_argument(
         "--use-ctime", help="use fstat-ctime as create date", dest="use_ctime", action="store_true",
     )
-    parser_unload.add_argument(
+    parser_unload_photos.add_argument(
         "-d", "--delete", help="delete source if target already exists", dest="delete", action="store_true",
     )
-    parser_unload.add_argument(
+    parser_unload_photos.add_argument(
         "-v", "--verbose", help="output verbose information", dest="verbose", action="store_true",
     )
-    parser_unload.add_argument(
+    parser_unload_photos.add_argument(
         "-t",
         "--target-prefix",
         help="location where the files will be moved to on rename (default is .)",
         dest="target_prefix",
         default=".",
     )
-    parser_unload.add_argument("dirs", help="directories to unload recursively", nargs="*", action="append")
-    parser_unload.set_defaults(func=cmd_photo_unload)
+    parser_unload_photos.add_argument("dirs", help="directories to unload recursively", nargs="*", action="append")
+    parser_unload_photos.set_defaults(func=cmd_photo_unload)
+
+    # create the parser for the "unload_videos" command
+    parser_unload_videos = subparsers.add_parser("unload_videos", help="recursively unload (find, copy/rename, delete) videos (avi, thm, mts, mov)")
+    parser_unload_videos.add_argument(
+        "-n", "--dry-run", help="perform a trial run with no changes made", dest="dryrun", action="store_true",
+    )  # --dry-run
+    parser_unload_videos.add_argument(
+        "-f", "--force", help="force overwrite", dest="force", action="store_true",
+    )
+    parser_unload_videos.add_argument(
+        "-U", "--use-unknown", help="use UNK as camera model", dest="use_unknown", action="store_true",
+    )
+    parser_unload_videos.add_argument(
+        "--use-ctime", help="use fstat-ctime as create date", dest="use_ctime", action="store_true",
+    )
+    parser_unload_videos.add_argument(
+        "-d", "--delete", help="delete source if target already exists", dest="delete", action="store_true",
+    )
+    parser_unload_videos.add_argument(
+        "-v", "--verbose", help="output verbose information", dest="verbose", action="store_true",
+    )
+    parser_unload_videos.add_argument(
+        "-t",
+        "--target-prefix",
+        help="location where the files will be moved to on rename (default is .)",
+        dest="target_prefix",
+        default=".",
+    )
+    parser_unload_videos.add_argument("dirs", help="directories to unload recursively", nargs="*", action="append")
+    parser_unload_videos.set_defaults(func=cmd_photo_unload)
 
     # parse the args and call whatever function was selected
     args = parser.parse_args()
