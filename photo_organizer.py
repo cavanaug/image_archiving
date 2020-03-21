@@ -8,6 +8,7 @@ import time
 import re
 import exifread
 import shutil
+import glob
 
 import traceback
 import logging
@@ -31,10 +32,18 @@ modelAlias = {
     "iPhone 4S": "IOS",
     "iPhone 5": "IOS",
     "iPhone 5S": "IOS",
+    "iPhone 5s": "IOS",
     "iPhone 6": "IOS",
+    "iPhone 6s Plus": "IOS",
+    "iPhone 6 Plus": "IOS",
     "iPhone 6S": "IOS",
     "iPhone 6s": "IOS",
     "iPhone SE": "IOS",
+    "iPad mini": "IOS",
+
+    "Nexus 5": "DROID",
+    "Nexus 5X": "DROID",
+
     #
     #  Modern Cameras
     #
@@ -46,8 +55,20 @@ modelAlias = {
     "Canon EOS 60D": "60D",
     "Canon EOS 70D": "70D",
     "Canon EOS 7D": "7D",
-    "Canon EOS REBEL T3i": "T3i",  # Petter?
+
+    "Canon EOS-1D X Mark II": "1D",
+    "Canon EOS 5D Mark III": "5D",
+
+    "EX-S600": "MISC",
+    "HP ojj3600": "MISC",
+    "HP ojj3600": "MISC",
+
+    "Canon EOS REBEL T3i": "EOS",  # Petter?
+    "Canon EOS DIGITAL REBEL XTi": "EOS",  # Petter?
+    "Canon EOS DIGITAL REBEL": "EOS",  # Petter?
+
     "Canon PowerShot S200": "PSHOT",
+    "Canon PowerShot SX200 IS": "PSHOT",
     "Canon PowerShot SD550": "PSHOT",
     "Canon PowerShot SD630": "PSHOT",
     "Canon PowerShot SD500": "PSHOT",
@@ -60,10 +81,13 @@ modelAlias = {
     "Canon PowerShot A3100 IS": "PSHOT",
     "Canon PowerShot SD890 IS": "PSHOT",
     "Canon PowerShot S2 IS": "PSHOT",
+    "Canon PowerShot SX20 IS": "PSHOT",
+    "Canon PowerShot A710 IS": "PSHOT",
     "Canon PowerShot S3 IS": "PSHOT",
     "Canon PowerShot SD700 IS": "PSHOT",
     "Canon PowerShot S50": "PSHOT",
     "Canon PowerShot G7": "PSHOT",
+    "Canon PowerShot ELPH 300 HS": "PSHOT",
     #
     #  Old or Non-Canon Cameras
     #
@@ -74,6 +98,8 @@ modelAlias = {
     #
     #  "Other" category
     #
+    "P2020": "MISC",
+    "DMC-FZ28": "MISC",
     "FinePix F10": "MISC",  # Jimmy?
     "KODAK DX3900 ZOOM DIGITAL CAMERA": "MISC",  # Jimmy?
     "MX-2700": "MISC",  # Jimmy?
@@ -85,15 +111,26 @@ modelAlias = {
     "BlackBerry 8320": "MISC",  # Jimmy?
     "HP pst3300": "MISC",  # Jimmy?
     "NIKON D80": "MISC",  # Jimmy?
+    "NIKON D600": "MISC",  # Jimmy?
     "NIKON D700": "MISC",  # Jimmy?
     "NIKON D200": "MISC",  # Jimmy?
     "QSS": "MISC",  # Jimmy?
     "FinePix Z10fd": "MISC",  # Jimmy?
+    "MG6100 series": "MISC",
+    "DMC-LX5": "MISC",
     #
     #  Misc/Unknown Cameras
     #
     "Unknown": "UNK",
 }
+
+def getModelAlias(model):
+    if args.use_unknown:
+        modelShort = "UNK"
+    if model in modelAlias:
+        modelShort = modelAlias[model]
+    return modelShort
+
 
 #
 # Provide a new file name that matches my PERSONAL PREFERENCE for image filenames
@@ -139,6 +176,8 @@ def new_filename(data):
     # Add back in the base _ prefix
     if len(base) > 0:
         base = "_" + base
+        base = re.sub(r" ", "_", base)
+        base = re.sub(r"[\[\(\)\]]", "_", base)
 
     # Build the date & subsec portion of the filename
     try:
@@ -150,23 +189,23 @@ def new_filename(data):
             newfilename = data["Image DateTime"].printable
         elif "Custom DateTimeOriginal" in data:
             newfilename = data["Custom DateTimeOriginal"].printable
+        elif args.use_ctime:
+            newfilename = data["Custom stat-ctime"].printable
         else:
             raise KeyError("Missing EXIF DataTimeOriginal")
     except:
-        print(
-            "ERROR: Missing EXIF DateTimeOriginal for {0}".format(data["Custom Filepath"]), file=sys.stderr,
-        )
+        if debug:
+            print("ERROR: Missing EXIF DateTimeOriginal for {0}".format(data["Custom Filepath"]), file=sys.stderr)
         raise KeyError("Missing EXIF DataTimeOriginal")
         return oldname
     newfilename = re.sub(r":", "", newfilename)
     newfilename = re.sub(r" ", "-", newfilename)
 
-    # TODO:  If DateTimeOriginal isnt there use Stat-mtime
     # TODO:  If SubSecTime isnt there use 2 digits from Canon-ImageNumber, MakerNote ImageNumber
     # TODO:  Add in test for borked dates.   Dont want to attempt renames if the data is messed up.
     try:
         if "Image Model" in data:
-            modelShort = modelAlias[data["Image Model"].printable.rstrip()]
+            modelShort = getModelAlias(data["Image Model"].printable.rstrip())
         else:
             modelShort = "UNK"
             # This is a hack for screenshots on IOS
@@ -190,7 +229,8 @@ def new_filename(data):
             num = counter
         newfilename = newfilename + "{0:02d}".format(num)
     else:
-        newfilename = newfilename + "{0:02d}".format(0)
+        src_size = os.path.getsize( data["Custom Filepath"].printable) % 100
+        newfilename = newfilename + "{0:02d}".format(src_size)
 
     # Build the model alias portion of name
     newfilename = newfilename + "-" + modelShort
@@ -224,6 +264,8 @@ def new_dirname(data):
         datetime = data["Image DateTime"].printable
     elif "Custom DateTimeOriginal" in data:
         datetime = data["Custom DateTimeOriginal"].printable
+    elif args.use_ctime:
+        datetime = data["Custom stat-ctime"].printable
     else:
         raise KeyError("Missing EXIF DataTimeOriginal")
 
@@ -321,6 +363,7 @@ def cmd_photo_rename(args):
         newpath = "{target_prefix}/{target_dir}/{target_name}".format(
             target_prefix=args.target_prefix, target_dir=newdir, target_name=newname
         )
+        newdir = "{target_prefix}/{target_dir}".format(target_prefix=args.target_prefix, target_dir=newdir)
         if args.verbose:
             print("\n")
             print("Original")
@@ -339,11 +382,16 @@ def cmd_photo_rename(args):
                 src_size = os.path.getsize(filename)
                 if not args.force:
                     if target_size == src_size:
+                        if args.delete:
+                            os.remove(filename)
+                            raise IOError("Destination exists, with same size. Removing.")
                         raise IOError("Destination exists, with same size")
                     else:
                         raise IOError("Destination exists, with DIFFERENT size.  Would destroy destination.")
             if not args.dryrun:
                 if not os.path.isdir(newdir):
+                    if debug:
+                        print(f"Making target directory {newdir}")
                     os.makedirs(newdir)
                 shutil.move(filename, newpath)
             print("{0} -> {1}".format(data["Custom Filepath"], newpath))
@@ -365,8 +413,10 @@ def cmd_photo_unload(args):
         if not os.path.isdir(dir):
             print("SKIPPING: {} is not a directory".format(dir, file=sys.stderr))
             continue
-        for path in Path(dir).rglob('*.JPG'):
-            files.append(path)
+        images = re.compile(".*(JPG|JPEG)$", flags=re.IGNORECASE)
+        for path in glob.iglob(f'{dir}/**', recursive=True):
+            if os.path.isfile(path) and images.match(path):
+                files.append(path)
 #    for file in files:
 #        print(file)
     args.files=[]
@@ -424,10 +474,19 @@ if __name__ == "__main__":
         "-f", "--force", help="force overwrite", dest="force", action="store_true",
     )
     parser_rename.add_argument(
+        "-U", "--use-unknown", help="use UNK as camera model", dest="use_unknown", action="store_true",
+    )
+    parser_rename.add_argument(
+        "--use-ctime", help="use fstat-ctime as create date", dest="use_ctime", action="store_true",
+    )
+    parser_rename.add_argument(
         "-v", "--verbose", help="output verbose information", dest="verbose", action="store_true",
     )
     parser_rename.add_argument(
         "-n", "--dry-run", help="perform a trial run with no changes made", dest="dryrun", action="store_true",
+    )
+    parser_rename.add_argument(
+        "-d", "--delete", help="delete source if target already exists", dest="delete", action="store_true",
     )
     parser_rename.add_argument(
         "-t",
@@ -446,6 +505,15 @@ if __name__ == "__main__":
     )  # --dry-run
     parser_unload.add_argument(
         "-f", "--force", help="force overwrite", dest="force", action="store_true",
+    )
+    parser_unload.add_argument(
+        "-U", "--use-unknown", help="use UNK as camera model", dest="use_unknown", action="store_true",
+    )
+    parser_unload.add_argument(
+        "--use-ctime", help="use fstat-ctime as create date", dest="use_ctime", action="store_true",
+    )
+    parser_unload.add_argument(
+        "-d", "--delete", help="delete source if target already exists", dest="delete", action="store_true",
     )
     parser_unload.add_argument(
         "-v", "--verbose", help="output verbose information", dest="verbose", action="store_true",
