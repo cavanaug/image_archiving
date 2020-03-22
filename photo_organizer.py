@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-#from __future__ import print_function
+# from __future__ import print_function
 import argparse
 import sys
 import os
@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import glob
 import json
+import pprint
 
 import traceback
 import logging
@@ -21,8 +22,6 @@ from autologging import logged, TRACE, traced
 
 
 debug = False
-
-counter = 0
 
 modelAlias = {
     #
@@ -42,10 +41,8 @@ modelAlias = {
     "iPhone 6s": "IOS",
     "iPhone SE": "IOS",
     "iPad mini": "IOS",
-
     "Nexus 5": "DROID",
     "Nexus 5X": "DROID",
-
     #
     #  Modern Cameras
     #
@@ -57,18 +54,14 @@ modelAlias = {
     "Canon EOS 60D": "60D",
     "Canon EOS 70D": "70D",
     "Canon EOS 7D": "7D",
-
     "Canon EOS-1D X Mark II": "1D",
     "Canon EOS 5D Mark III": "5D",
-
     "EX-S600": "MISC",
     "HP ojj3600": "MISC",
     "HP ojj3600": "MISC",
-
     "Canon EOS REBEL T3i": "EOS",  # Petter?
     "Canon EOS DIGITAL REBEL XTi": "EOS",  # Petter?
     "Canon EOS DIGITAL REBEL": "EOS",  # Petter?
-
     "Canon PowerShot S200": "PSHOT",
     "Canon PowerShot SX200 IS": "PSHOT",
     "Canon PowerShot SD550": "PSHOT",
@@ -126,12 +119,52 @@ modelAlias = {
     "Unknown": "UNK",
 }
 
-def getModelAlias(model):
+
+#
+# Put all the logic for creating the short model name in one place
+#
+def getModelAlias(data):
+    try:
+        model = data["EXIF:Model"]
+    except:
+        raise KeyError("Missing Model Information")
     if args.use_unknown:
         modelShort = "UNK"
-    if model in modelAlias:
+        if model in modelAlias:
+            modelShort = modelAlias[model]
+    else:
         modelShort = modelAlias[model]
     return modelShort
+
+
+def getCreateDate(data):
+    if "EXIF:DateTimeOriginal" in data:
+        datetime = data["EXIF:DateTimeOriginal"]
+    elif "EXIF:DateTimeDigitized" in data:
+        datetime = data["EXIF:DateTimeDigitized"]
+    elif "EXIF:CreateDate" in data:
+        datetime = data["EXIF:CreateDate"]
+    elif "Custom:DateTimeOriginal" in data:  # Based on filename
+        datetime = data["Custom:FileNameDate"]
+    elif args.use_ctime:
+        datetime = data["Custom:stat-ctime"]
+    else:
+        raise KeyError("ERROR: Cant determine Creation Date for file")
+    return datetime
+
+
+def getSeqNumXX(data):
+    # Handle situations with FPS>1
+    # Will put in a 2 digit psuedo seq number
+
+    if "Composite:FileNumber" in data:
+        seqnum = int(data["Composite:FileNumber"].split("-")[1])
+    else:
+        for item in ["EXIF:SubSecTime", "EXIF:SubSecTimeDigitized", "EXIF:SubSecTimeDigitized", "Custom:FileSize"]:
+            if item in data:
+                seqnum = data[item]
+                break
+    return "{0:02d}".format(seqnum % 100)
 
 
 #
@@ -140,18 +173,19 @@ def getModelAlias(model):
 # Pass it the full path to the source image and it will return the basename of the newfilename to be used
 #
 # Desired behavior is something like these examples:
-#    IMG_0429JPG -> YYYYMMDD-HHMMSSX-ZZZ.JPG
+#    IMG_0429.JPG -> YYYYMMDD-HHMMSSXX-ZZZ.JPG
 #    IMG_0429_edited.JPG -> YYYYMMDD-HHMMSSX-ZZZ_edited.JPG
-#    Foobar.JPG -> YYYYMMDD-HHMMSSX-ZZZ_Foobar.JPG
+#    Foobar.JPG -> YYYYMMDD-HHMMSSXX-ZZZ_Foobar.JPG
 #
-#    X = ImageSeq Number (Basically a way to allow numbering of images when you can take > 1 fps)
-#              TODO: This is Very Suboptimal in design as it is only 1 digit, you CAN AND WILL have instances where 0 was after 9, should make this 2 digits
-#    YYY = Model Name, like A70 or G3 or 10D so I know which camera took the photo
+#    XX = ImageSeq Number (Basically a way to allow numbering of images when you can take > 1 fps)
+#             SubSecTime
+#             ImageNumber modulo 100
+#             Filesize modulo 100
+#         TODO: This isnt perfect, you CAN AND WILL have instances where 00 was after 99
+#    ZZZ = Model Name Alias, like A70 or G3 or 10D so I know which camera took the photo immediately
 def new_filename(data):
-    global counter
-    counter = counter + 1
-    oldname = data["Custom Filename"].printable
-    m = re.search("^(.*)\.(jpg|thm|avi)$", oldname, re.IGNORECASE)
+    oldname = data["File:FileName"]
+    m = re.search("^(.*)\.(jpg|thm|avi|mov|mts)$", oldname, re.IGNORECASE)
     if not m:
         print("ERROR: Unhandled filetype for {0}...".format(oldname), file=sys.stderr)
         raise UserWarning("Unhandled filetype")
@@ -169,7 +203,7 @@ def new_filename(data):
         else:
             base = ""
 
-    # Strip out the base handling if the file is named in IOS dateformat already
+    # Strip out the base handling if the file is named in a dateformat already
     if re.search("^\d\d\d\d-\d\d-\d\d_\d\d-\d\d-\d\d", base):
         base = ""
 
@@ -181,56 +215,27 @@ def new_filename(data):
 
     # Build the date & subsec portion of the filename
     try:
-        if "EXIF DateTimeOriginal" in data:
-            newfilename = data["EXIF DateTimeOriginal"].printable
-        elif "EXIF DateTimeDigitized" in data:
-            newfilename = data["EXIF DateTimeDigitized"].printable
-        elif "Image DateTime" in data:
-            newfilename = data["Image DateTime"].printable
-        elif "Custom DateTimeOriginal" in data:
-            newfilename = data["Custom DateTimeOriginal"].printable
-        elif args.use_ctime:
-            newfilename = data["Custom stat-ctime"].printable
-        else:
-            raise KeyError("Missing EXIF DataTimeOriginal")
+        newfilename = getCreateDate(data)
     except:
         if debug:
-            print("ERROR: Missing EXIF DateTimeOriginal for {0}".format(data["Custom Filepath"]), file=sys.stderr)
-        raise KeyError("Missing EXIF DataTimeOriginal")
-        return oldname
+            print("ERROR: Missing EXIF DateTimeOriginal for {0}".format(data["SourceFile"]), file=sys.stderr)
+        raise KeyError("ERROR: Cant determine Creation Date for file")
     newfilename = re.sub(r":", "", newfilename)
     newfilename = re.sub(r" ", "-", newfilename)
 
-    # TODO:  If SubSecTime isnt there use 2 digits from Canon-ImageNumber, MakerNote ImageNumber
-    # TODO:  Add in test for borked dates.   Dont want to attempt renames if the data is messed up.
-    try:
-        if "Image Model" in data:
-            modelShort = getModelAlias(data["Image Model"].printable.rstrip())
-        else:
-            modelShort = "UNK"
-            # This is a hack for screenshots on IOS
-            if "Custom DateTimeOriginal" in data:
-                modelShort = "IOS"
-    except:
-        print('ERROR: File "{0}"\n'.format(data["Custom Filepath"]), file=sys.stderr)
-        print(
-            'ERROR: Missing ModelAlias for "{0}"\n'.format(data["Image Model"]), file=sys.stderr,
-        )
-        raise KeyError("Missing Model Alias")
-
     # Handle situations with FPS>1
     # Will put in a 2 digit psuedo seq number
-    if modelShort == "7D":
-        newfilename = newfilename + data["EXIF SubSecTime"].printable
-    elif modelShort == "10D":
-        try:
-            num = int(data["MakerNote ImageNumber"].printable) % 100
-        except:
-            num = counter
-        newfilename = newfilename + "{0:02d}".format(num)
-    else:
-        src_size = os.path.getsize( data["Custom Filepath"].printable) % 100
-        newfilename = newfilename + "{0:02d}".format(src_size)
+    seqnumXX = getSeqNumXX(data)
+    newfilename = newfilename + seqnumXX
+
+    try:
+        modelShort = getModelAlias(data)
+    except:
+        print('ERROR: File "{0}"\n'.format(data["SourceFile"]), file=sys.stderr)
+        print(
+            'ERROR: Cant determine ModelAlias for "{0}"\n'.format(data["EXIF:Model"]), file=sys.stderr,
+        )
+        raise KeyError("Missing Model or Model Alias")
 
     # Build the model alias portion of name
     newfilename = newfilename + "-" + modelShort
@@ -252,38 +257,10 @@ def new_filename(data):
 # Pass it the full path to the source image and it will return the folder hierarchy to be placed in
 #
 def new_dirname(data):
-    # Build the date & subsec portion of the filename
-
-    if "EXIF DateTimeOriginal" in data:
-        datetime = data["EXIF DateTimeOriginal"].printable
-    elif "EXIF DateTimeDigitized" in data:
-        datetime = data["EXIF DateTimeDigitized"].printable
-    elif "Image DateTime" in data:
-        datetime = data["Image DateTime"].printable
-    elif "Custom DateTimeOriginal" in data:
-        datetime = data["Custom DateTimeOriginal"].printable
-    elif args.use_ctime:
-        datetime = data["Custom stat-ctime"].printable
-    else:
-        raise KeyError("Missing EXIF DataTimeOriginal")
-
+    datetime = getCreateDate(data)
     m = re.search(r"^(\d\d\d\d):(\d\d)", datetime)
     newdirname = m.group(1) + os.sep + m.group(1) + "-" + m.group(2) + "_Unprocessed"
-    # TODO:  If DateTimeOriginal isnt there use Stat-mtime
-    # TODO:  Add in test for borked dates.   Dont want to attempt renames if the data is messed up.
-    #    data['Custom Filepath'] = exifread.IfdTag(fpath, None, 2, None, None, None)
     return newdirname
-
-
-def merge_dicts(*dict_args):
-    """
-    Given any number of dicts, shallow copy and merge into a new dict,
-    precedence goes to key value pairs in latter dicts.
-    """
-    result = {}
-    for dictionary in dict_args:
-        result.update(dictionary)
-    return result
 
 
 #
@@ -293,38 +270,36 @@ def merge_dicts(*dict_args):
 #     filename
 #     custom fields (derived from comments)
 #
-def process_file_new(fpath):
+def process_file(fpath):
     try:
         file = open(fpath, "rb")
     except:
         print("'%s' is unreadable\n" % fpath, file=sys.stderr)
         exit(1)
-    # TODO: Fix avi/mov handling here
     fpath_basename = os.path.basename(fpath)
     fpath_dirname = os.path.dirname(fpath)
     if not fpath_dirname:
         fpath_dirname = "."
     fpath = fpath_dirname + os.sep + fpath_basename
-#    data = exifread.process_file(file, details=True)
-    data = json.loads(subprocess.check_output(args=["exiftool", "-j", fpath]))[0]
+    data = json.loads(subprocess.check_output(args=["exiftool", "-G", "-j", fpath]))[0]
 
     # Populate the exif information with our own custom data
-#    statinfo = os.stat(fpath)
-#    data["Custom Filepath"] = exifread.IfdTag(fpath, None, 2, None, None, None)
-#    data["Custom Filename"] = exifread.IfdTag(fpath_basename, None, 2, None, None, None)
-#    data["Custom Dirname"] = exifread.IfdTag(fpath_dirname, None, 2, None, None, None)
-#    data["Custom stat-atime"] = exifread.IfdTag( time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_atime)), None, 2, None, None, None,)
-#    data["Custom stat-ctime"] = exifread.IfdTag( time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_ctime)), None, 2, None, None, None,)
-#    data["Custom stat-mtime"] = exifread.IfdTag( time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_mtime)), None, 2, None, None, None,)
+    statinfo = os.stat(fpath)
+    data["Custom:stat-atime"] = time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_atime))
+    data["Custom:stat-ctime"] = time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_ctime))
+    data["Custom:stat-mtime"] = time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_mtime))
+    data["Custom:FileSize"] = os.path.getsize(fpath)
+
     # Strip out the base handling if the file has already been renamed
     base = fpath_basename.split(".")[0]
     if re.search("^\d\d\d\d-\d\d-\d\d_\d\d-\d\d-\d\d", base):
         base = re.sub("_", " ", base)
         base = re.sub("-", ":", base)
-        data["Custom DateTimeOriginal"] = base
+        data["Custom:FileNameDate"] = base
     return data
 
-def process_file(fpath):
+
+def process_file_old(fpath):
     try:
         file = open(fpath, "rb")
     except:
@@ -341,18 +316,12 @@ def process_file(fpath):
 
     # Populate the exif information with our own custom data
     statinfo = os.stat(fpath)
-    data["Custom Filepath"] = exifread.IfdTag(fpath, None, 2, None, None, None)
-    data["Custom Filename"] = exifread.IfdTag(fpath_basename, None, 2, None, None, None)
-    data["Custom Dirname"] = exifread.IfdTag(fpath_dirname, None, 2, None, None, None)
-    data["Custom stat-atime"] = exifread.IfdTag(
-        time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_atime)), None, 2, None, None, None,
-    )
-    data["Custom stat-ctime"] = exifread.IfdTag(
-        time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_ctime)), None, 2, None, None, None,
-    )
-    data["Custom stat-mtime"] = exifread.IfdTag(
-        time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_mtime)), None, 2, None, None, None,
-    )
+    data["Custom:FilePath"] = exifread.IfdTag(fpath, None, 2, None, None, None)
+    data["Custom:FileName"] = exifread.IfdTag(fpath_basename, None, 2, None, None, None)
+    data["Custom:DirName"] = exifread.IfdTag(fpath_dirname, None, 2, None, None, None)
+    data["Custom:stat-atime"] = exifread.IfdTag(time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_atime)), None, 2, None, None, None,)
+    data["Custom:stat-ctime"] = exifread.IfdTag(time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_ctime)), None, 2, None, None, None,)
+    data["Custom:stat-mtime"] = exifread.IfdTag(time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(statinfo.st_mtime)), None, 2, None, None, None,)
     # Strip out the base handling if the file has already been renamed
     base = fpath_basename.split(".")[0]
     if re.search("^\d\d\d\d-\d\d-\d\d_\d\d-\d\d-\d\d", base):
@@ -360,6 +329,7 @@ def process_file(fpath):
         base = re.sub("-", ":", base)
         data["Custom DateTimeOriginal"] = exifread.IfdTag(base, None, 2, None, None, None)
     return data
+
 
 # sub-command functions
 def cmd_photo_rename(args):
@@ -369,6 +339,7 @@ def cmd_photo_rename(args):
             continue
         try:
             data = process_file(filename)
+#            pp.pprint(data)
             newname = new_filename(data)
             newdir = new_dirname(data)
         except SystemExit:
@@ -376,22 +347,19 @@ def cmd_photo_rename(args):
             exit(1)
         except:
             print(
-                "SKIPPING: {} due to errors ({}: {})".format(filename, sys.exc_info()[0], sys.exc_info()[1]),
-                file=sys.stderr,
+                "SKIPPING: {} due to errors ({}: {})".format(filename, sys.exc_info()[0], sys.exc_info()[1]), file=sys.stderr,
             )
             if debug:
                 print("Details {}".format(traceback.format_exc()), file=sys.stderr)
             continue
-        newpath = "{target_prefix}/{target_dir}/{target_name}".format(
-            target_prefix=args.target_prefix, target_dir=newdir, target_name=newname
-        )
+        newpath = "{target_prefix}/{target_dir}/{target_name}".format(target_prefix=args.target_prefix, target_dir=newdir, target_name=newname)
         newdir = "{target_prefix}/{target_dir}".format(target_prefix=args.target_prefix, target_dir=newdir)
         if args.verbose:
             print("\n")
             print("Original")
-            print("   Filepath:   {0}".format(data["Custom Filepath"]))
-            print("    Dirname:   {0}".format(data["Custom Dirname"]))
-            print("   Filename:   {0}".format(data["Custom Filename"]))
+            print("   Filepath:   {0}".format(data["SourceFile"]))
+            print("    Dirname:   {0}".format(data["File:Directory"]))
+            print("   Filename:   {0}".format(data["File:FileName"]))
             print("Renamed")
             print("   Filepath:   {0}".format(newpath))
             print("    Dirname:   {0}".format(newdir))
@@ -416,11 +384,10 @@ def cmd_photo_rename(args):
                         print(f"Making target directory {newdir}")
                     os.makedirs(newdir)
                 shutil.move(filename, newpath)
-            print("{0} -> {1}".format(data["Custom Filepath"], newpath))
+            print("{0} -> {1}".format(data["SourceFile"], newpath))
         except:
             print(
-                "SKIPPING: {} due to errors ({}: {})".format(filename, sys.exc_info()[0], sys.exc_info()[1]),
-                file=sys.stderr,
+                "SKIPPING: {} due to errors ({}: {})".format(filename, sys.exc_info()[0], sys.exc_info()[1]), file=sys.stderr,
             )
             if debug:
                 print("Details {}".format(traceback.format_exc()), file=sys.stderr)
@@ -428,47 +395,21 @@ def cmd_photo_rename(args):
 
 
 def cmd_photo_unload(args):
-    files=[]
+    files = []
     for dir in args.dirs[0]:
         if not os.path.isdir(dir):
             print("SKIPPING: {} is not a directory".format(dir, file=sys.stderr))
             continue
         images = re.compile(".*(JPG|JPEG)$", flags=re.IGNORECASE)
-        for path in glob.iglob(f'{dir}/**', recursive=True):
+        for path in glob.iglob(f"{dir}/**", recursive=True):
             if os.path.isfile(path) and images.match(path):
                 files.append(path)
-#    for file in files:
-#        print(file)
-    args.files=[]
+    #    for file in files:
+    #        print(file)
+    args.files = []
     args.files.append(files)
     cmd_photo_rename(args)
     return
-
-
-def cmd_photo_exif_new(args):
-    err = 0
-    for filename in args.files[0]:
-        if not os.path.isfile(filename):
-            print("'%s' doesn't exist...\n" % filename)
-            err += 1
-            continue
-        print(filename + ":")
-        data = process_file_new(filename)
-        if not data:
-            print("   No EXIF information found")
-            continue
-
-        x = list(data.keys())
-        x.sort()
-        for i in x:
-            if i in ("JPEGThumbnail", "TIFFThumbnail"):
-                continue
-            try:
-                print("   [%s] (%s): %s" % (i, exifread.FIELD_TYPES[data[i].field_type][2], data[i].printable,))
-            except:
-                print("error", i, '"', data[i], '"')
-        print()
-    exit(err)
 
 def cmd_photo_exif(args):
     err = 0
@@ -478,7 +419,7 @@ def cmd_photo_exif(args):
             err += 1
             continue
         print(filename + ":")
-        data = process_file_new(filename)
+        data = process_file(filename)
         if not data:
             print("   No EXIF information found")
             continue
@@ -494,6 +435,7 @@ def cmd_photo_exif(args):
                 print("error", i, '"', data[i], '"')
         print()
     exit(err)
+
 
 def cmd_photo_exif2(args):
     err = 0
@@ -520,13 +462,15 @@ def cmd_photo_exif2(args):
         print()
     exit(err)
 
+
 if __name__ == "__main__":
+    # Create pretty printer
+    pp = pprint.PrettyPrinter(indent=4)
+
     # create the top-level parser
     parser = argparse.ArgumentParser()
     parser.add_argument("--version", action="version", version="1.0")
-    parser.add_argument(
-        "-d", "--debug", help="additional debug information", dest="debug", default=0, action="count"
-    )
+    parser.add_argument("-d", "--debug", help="additional debug information", dest="debug", default=0, action="count")
     subparsers = parser.add_subparsers()
 
     # create the parser for the "exif" command
@@ -561,20 +505,14 @@ if __name__ == "__main__":
         "-d", "--delete", help="delete source if target already exists", dest="delete", action="store_true",
     )
     parser_rename.add_argument(
-        "-t",
-        "--target-prefix",
-        help="location where the files will be moved to on rename (default is .)",
-        dest="target_prefix",
-        default=".",
+        "-t", "--target-prefix", help="location where the files will be moved to on rename (default is .)", dest="target_prefix", default=".",
     )
     parser_rename.add_argument("files", help="files to process", nargs="*", action="append")
     parser_rename.set_defaults(func=cmd_photo_rename)
 
     # create the parser for the "unload_photos" command
     parser_unload_photos = subparsers.add_parser("unload_photos", help="recursively unload (find, copy/rename, delete) photos (jpg, jpeg)")
-    parser_unload_photos.add_argument(
-        "-n", "--dry-run", help="perform a trial run with no changes made", dest="dryrun", action="store_true",
-    )  # --dry-run
+    parser_unload_photos.add_argument("-n", "--dry-run", help="perform a trial run with no changes made", dest="dryrun", action="store_true")
     parser_unload_photos.add_argument(
         "-f", "--force", help="force overwrite", dest="force", action="store_true",
     )
@@ -591,11 +529,7 @@ if __name__ == "__main__":
         "-v", "--verbose", help="output verbose information", dest="verbose", action="store_true",
     )
     parser_unload_photos.add_argument(
-        "-t",
-        "--target-prefix",
-        help="location where the files will be moved to on rename (default is .)",
-        dest="target_prefix",
-        default=".",
+        "-t", "--target-prefix", help="location where the files will be moved to on rename (default is .)", dest="target_prefix", default=".",
     )
     parser_unload_photos.add_argument("dirs", help="directories to unload recursively", nargs="*", action="append")
     parser_unload_photos.set_defaults(func=cmd_photo_unload)
@@ -621,11 +555,7 @@ if __name__ == "__main__":
         "-v", "--verbose", help="output verbose information", dest="verbose", action="store_true",
     )
     parser_unload_videos.add_argument(
-        "-t",
-        "--target-prefix",
-        help="location where the files will be moved to on rename (default is .)",
-        dest="target_prefix",
-        default=".",
+        "-t", "--target-prefix", help="location where the files will be moved to on rename (default is .)", dest="target_prefix", default=".",
     )
     parser_unload_videos.add_argument("dirs", help="directories to unload recursively", nargs="*", action="append")
     parser_unload_videos.set_defaults(func=cmd_photo_unload)
@@ -633,10 +563,8 @@ if __name__ == "__main__":
     # parse the args and call whatever function was selected
     args = parser.parse_args()
     if not debug:
-        debug = args.debug>=1
+        debug = args.debug >= 1
 
-    if args.debug>=2:
-        logging.basicConfig(level=TRACE, stream=sys.stderr, format="%(levelname)s:%(filename)s,%(lineno)d:%(name)s.%(funcName)s:%(message)s")
     try:
         func = args.func
     except AttributeError:
